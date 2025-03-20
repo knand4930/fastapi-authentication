@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f8f8f8;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .login-container {
+            background-color: white;
+            border-radius: 4px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            width: 350px;
+        }
+        .header {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .header h1 {
+            color: #417690;
+            font-weight: 300;
+            font-size: 24px;
+            margin: 0;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .submit-btn {
+            background-color: #417690;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: bold;
+        }
+        .submit-btn:hover {
+            background-color: #2d5066;
+        }
+        .error-message {
+            color: #a94442;
+            background-color: #f2dede;
+            border: 1px solid #ebccd1;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="header">
+            <h1>Administration</h1>
+        </div>
+
+        {% if error %}
+        <div class="error-message">
+            {{ error }}
+        </div>
+        {% endif %}
+
+        <form method="post" action="{{ request.url.path }}">
+            <div class="form-group">
+                <label for="username">Email address:</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <button type="submit" class="submit-btn">Log in</button>
+        </form>
+    </div>
+</body>
+</html>

@@ -1,0 +1,1 @@
+from .sql_admin import setup_admin
