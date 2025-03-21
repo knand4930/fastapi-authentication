@@ -10,9 +10,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         exempt_paths = [
             "/admin/login",
-            "/admin/static",
             "/static",
             "/favicon.ico",
+            "/admin/static",
+            "/api/auth/register/",
+            "/api/auth/login/",
+            "/api/auth/access/token/",
+            "/api/auth/me/",
         ]
 
         # Check if the current path should be exempt

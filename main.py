@@ -9,14 +9,16 @@ from starlette.responses import HTMLResponse
 import settings
 from ModelResource import setup_admin
 from database import engine
+from middleware.unified_auth_middleware import UnifiedAuthMiddleware
 from queryset.auth.user_route import router
 
-from middleware.auth_middleware import AuthMiddleware
+# from middleware.auth_middleware import AuthMiddleware
 from settings import origins
 
 app = FastAPI()
 
-app.add_middleware(AuthMiddleware)
+# app.add_middleware(AuthMiddleware)
+app.add_middleware(UnifiedAuthMiddleware)
 app.add_middleware(SessionMiddleware, secret_key=settings.AES_SECRET_KEY)
 
 app.add_middleware(

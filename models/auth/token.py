@@ -22,7 +22,7 @@ class Token(Base):
     access_expires_at = Column(DateTime, nullable=False)
     refresh_expires_at = Column(DateTime, nullable=False)
 
-    user = relationship("User", backref="tokens")
+    user = relationship("User", back_populates="tokens")
 
     def __init__(self, user_id):
         raw_access_token = uuid.uuid4().hex + uuid.uuid4().hex
