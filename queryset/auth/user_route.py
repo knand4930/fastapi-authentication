@@ -147,6 +147,7 @@ def get_user(authorization: str = Header(None), db: Session = Depends(get_db)):
 @router.get("/api/get/current/user/")
 def get_current_user(request:Request):
     user_obj = request.state.user
+    print(user_obj, "print user obj")
     print(user_obj.first_name, "print user obj")
     # if not hasattr(request.state, "user") or request.state.user is None:
     #     raise HTTPException(status_code=401, detail="Authentication required")

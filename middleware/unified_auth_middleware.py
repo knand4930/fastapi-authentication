@@ -181,10 +181,35 @@ class UnifiedAuthMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next):
+        # Initialize user as None in request state
+        request.state.user = None
+
         # Check if path is exempt from authentication
         current_path = request.url.path
+
+        # Normalize path for comparison (handle both with and without trailing slash)
+        normalized_path = current_path.rstrip('/')
+
         for exempt_path in AuthRegistry.get_exempt_paths():
-            if current_path.startswith(exempt_path):
+            normalized_exempt = exempt_path.rstrip('/')
+            if normalized_path == normalized_exempt or current_path.startswith(exempt_path):
+                return await call_next(request)
+
+        # Check if there's already a valid session
+        admin_token = request.session.get("admin_token")
+        admin_user_id = request.session.get("admin_user_id")
+
+        # If session exists, validate and proceed
+        if admin_token and admin_user_id:
+            db: Session = next(get_db())
+            user = db.query(User).filter(
+                User.id == uuid.UUID(admin_user_id),
+                User.is_active == True
+            ).first()
+
+            if user:
+                # Set user in request state and continue
+                request.state.user = user
                 return await call_next(request)
 
         # Handle admin routes with session-based authentication
@@ -222,13 +247,32 @@ class UnifiedAuthMiddleware(BaseHTTPMiddleware):
 
     async def _handle_api_auth(self, request: Request, call_next):
         """Handle token-based authentication for API routes"""
-        # Get database session
+        # Check if there's already a session (might be coming from admin session)
+        admin_user_id = request.session.get("admin_user_id")
+        if admin_user_id:
+            db: Session = next(get_db())
+            user = db.query(User).filter(
+                User.id == uuid.UUID(admin_user_id),
+                User.is_active == True
+            ).first()
+
+            if user:
+                # Session user found, no need for additional auth
+                request.state.user = user
+                return await call_next(request)
+
+        # Proceed with token-based auth if no session
         db: Session = next(get_db())
 
         # Extract token from Authorization header
         auth_header = request.headers.get("Authorization")
-        if not auth_header or not auth_header.startswith(TOKEN_EXPIRE["AUTH_HEADER_TYPES"][0] + " "):
-            raise HTTPException(status_code=401, detail="Authentication required")
+        if not auth_header:
+            # Allow the request to continue without authentication
+            # But make sure user is already set to None in request.state
+            return await call_next(request)
+
+        if not auth_header.startswith(TOKEN_EXPIRE["AUTH_HEADER_TYPES"][0] + " "):
+            raise HTTPException(status_code=401, detail="Invalid authentication format")
 
         # Extract token
         access_token = auth_header[len(TOKEN_EXPIRE["AUTH_HEADER_TYPES"][0]) + 1:].strip()
