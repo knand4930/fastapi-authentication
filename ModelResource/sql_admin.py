@@ -4,6 +4,7 @@ from sqladmin.authentication import AuthenticationBackend
 from sqlalchemy.orm import Session
 
 import settings
+from ModelResource.auth.ModelResource import DepartmentAdmin, ParentDepartmentAdmin, CountryAdmin, StateAdmin, CityAdmin
 from database import get_db
 from models.auth.user import User
 import uuid
@@ -62,8 +63,7 @@ class AdminAuth(AuthenticationBackend):
 
 
 def setup_admin(app, engine):
-    # Set up SQLAdmin with authentication
-    admin_auth = AdminAuth(secret_key=settings.AES_SECRET_KEY)  # Use env vars in production
+    admin_auth = AdminAuth(secret_key=settings.AES_SECRET_KEY)
 
     admin = Admin(
         app,
@@ -82,5 +82,10 @@ def setup_admin(app, engine):
     admin.add_view(TokenAdmin)
     admin.add_view(SessionAdmin)
     admin.add_view(BlackListTokenAdmin)
+    admin.add_view(DepartmentAdmin)
+    admin.add_view(ParentDepartmentAdmin)
+    admin.add_view(CountryAdmin)
+    admin.add_view(StateAdmin)
+    admin.add_view(CityAdmin)
 
     return admin

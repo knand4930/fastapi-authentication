@@ -34,6 +34,7 @@ class Permission(Base):
     def __str__(self):
         return self.name
 
+
 class User(Base):
     __tablename__ = "users"
 
@@ -49,9 +50,15 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
-    # Many-to-Many Relationship with Permission
+    # Many-to-Many Relationship
     permissions = relationship("Permission", secondary=user_permission, lazy="joined")
+
+    #ForegiveKey Relationship
     tokens = relationship("Token", back_populates="user", cascade="all, delete-orphan")
+
+    departments = relationship("Department", back_populates="user", cascade="all, delete-orphan")
+    parent_departments = relationship("ParentDepartment", back_populates="user", cascade="all, delete-orphan")
+
 
     USERNAME_FIELDS = ["email"]
     REQUIRED_FIELDS = ["email", "password"]

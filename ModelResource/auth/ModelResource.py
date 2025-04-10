@@ -5,6 +5,9 @@ from models.auth.session import Session
 from models.auth.black_list_token import BlackListToken
 from sqladmin import Admin, ModelView
 
+from models.datamanagement.location import City, State, Country
+from models.department import Department, ParentDepartment
+
 
 class UserAdmin(ModelView, model=User):
     column_list = [User.id, User.email, User.first_name, User.last_name, User.is_active, User.created_at, User.updated_at]
@@ -22,7 +25,32 @@ class BlackListTokenAdmin(ModelView, model=BlackListToken):
     column_list = [BlackListToken.id, BlackListToken.user_id, BlackListToken.token_id, BlackListToken.created_at, BlackListToken.updated_at]
 
 
+class DepartmentAdmin(ModelView, model=Department):
+    column_list = [Department.id, Department.user_id, Department.created_at,
+                   Department.updated_at]
 
+
+class ParentDepartmentAdmin(ModelView, model=ParentDepartment):
+    column_list = [ParentDepartment.id, ParentDepartment.user_id, ParentDepartment.created_at,
+                   ParentDepartment.updated_at]
+
+
+
+class CountryAdmin(ModelView, model=Country):
+    column_list = [Country.id, Country.name, Country.created_at,
+                   Country.updated_at]
+
+
+
+class StateAdmin(ModelView, model=State):
+    column_list = [State.id, State.name, State.created_at,
+                   State.updated_at]
+
+
+
+class CityAdmin(ModelView, model=City):
+    column_list = [City.id, City.name, City.created_at,
+                   City.updated_at]
 
 
 #

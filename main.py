@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.cors import CORSMiddleware
@@ -10,12 +13,19 @@ import settings
 from ModelResource import setup_admin
 from database import engine
 from middleware.unified_auth_middleware import UnifiedAuthMiddleware
-from queryset.auth.user_route import router
+from queryset.auth.user_route import auth_router
+from queryset.department.department_route import department_router
 
 # from middleware.auth_middleware import AuthMiddleware
 from settings import origins
 
 app = FastAPI()
+# Create the media directory if it doesn't exist
+os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
+
+# Mount the media directory to serve files
+app.mount(settings.MEDIA_URL, StaticFiles(directory=settings.MEDIA_ROOT), name=settings.MEDIA_ROOT)
+
 
 # app.add_middleware(AuthMiddleware)
 app.add_middleware(UnifiedAuthMiddleware)
@@ -30,7 +40,8 @@ app.add_middleware(
 )
 
 
-app.include_router(router)
+app.include_router(auth_router)
+app.include_router(department_router)
 
 
 try:
