@@ -1,5 +1,5 @@
 
-from models.auth.user import User, Permission
+from models.auth.user import User, Permission, TeamManagement
 from models.auth.token import Token
 from models.auth.session import Session
 from models.auth.black_list_token import BlackListToken
@@ -14,6 +14,9 @@ class UserAdmin(ModelView, model=User):
 
 class PermissionAdmin(ModelView, model=Permission):
     column_list = [Permission.id, Permission.name, Permission.created_at, Permission.updated_at]
+
+class TeamManagementAdmin(ModelView, model=TeamManagement):
+    column_list = [TeamManagement.id, TeamManagement.name, TeamManagement.created_at, TeamManagement.updated_at]
 
 class TokenAdmin(ModelView, model=Token):
     column_list = [Token.id, Token.user_id, Token.access_token, Token.refresh_token, Token.is_active, Token.created_at, Token.access_expires_at, Token.refresh_expires_at]

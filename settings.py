@@ -12,8 +12,8 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 TOKEN_EXPIRE = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(days=1, hours=2),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=1, seconds=30),
+    "REFRESH_TOKEN_LIFETIME": timedelta(minutes=1, seconds=30),
     "AUTH_HEADER_TYPES": ("JWT",),
 }
 

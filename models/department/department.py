@@ -86,4 +86,15 @@ class Department(Base):
 
         return None
 
+    @property
+    def get_user(self):
+        if self.user:
+            return f"{self.user.first_name} {self.user.last_name}"
+        return None
+
+    @property
+    def get_department(self):
+        if self.parent_department:
+            return f"{self.parent_department.name}"
+        return None
 

@@ -2,7 +2,7 @@
 
 import uuid
 import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Table
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Table, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from database import Base
@@ -19,6 +19,14 @@ user_permission = Table(
 )
 
 
+user_teams = Table(
+    "user_teams",
+    Base.metadata,
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("team_id", UUID(as_uuid=True), ForeignKey("teammanagements.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
 
 class Permission(Base):
     __tablename__ = "permissions"
@@ -29,7 +37,8 @@ class Permission(Base):
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
     # Many-to-Many Relationship with User
-    users = relationship("User", secondary=user_permission, back_populates="permissions")  # Fix here
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user = relationship("User", secondary=user_permission, back_populates="permissions")  # Fix here
 
     def __str__(self):
         return self.name
@@ -51,7 +60,8 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
     # Many-to-Many Relationship
-    permissions = relationship("Permission", secondary=user_permission, lazy="joined")
+    permissions = relationship("Permission", secondary=user_permission, back_populates="user", lazy="selectin")
+    teams = relationship("TeamManagement", secondary=user_teams, back_populates="user", lazy="selectin")
 
     #ForegiveKey Relationship
     tokens = relationship("Token", back_populates="user", cascade="all, delete-orphan")
@@ -65,3 +75,21 @@ class User(Base):
 
     def __str__(self):
         return self.email
+
+
+
+class TeamManagement(Base):
+    __tablename__ = "teammanagements"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, unique=True, index=True)
+    name = Column(String, nullable=False, index=True)
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user = relationship("User", secondary=user_teams, back_populates="teams")
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    __table_args__ = (UniqueConstraint('user_id', 'name', name='uq_user_team_name'),)
+
+    def __str__(self):
+        return f"Team {self.name}"

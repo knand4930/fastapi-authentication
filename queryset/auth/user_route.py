@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from starlette.responses import JSONResponse
 from starlette.requests import Request
 from database import SessionLocal
+from middleware.permission import permission_required, IsAuthenticated, IsAdminUser
 from models import User, Token
 from utils.aes import encrypt_password, verify_password
 from pydantic import BaseModel, EmailStr, UUID4
@@ -120,26 +121,12 @@ def get_user(access_token: str, db: Session = Depends(get_db)):
 
 
 @auth_router.get("/api/auth/me/")
-def get_user(authorization: str = Header(None), db: Session = Depends(get_db)):
-
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authorization header missing")
-
-    auth_prefix = TOKEN_EXPIRE["AUTH_HEADER_TYPES"][0]
-    if authorization.startswith(auth_prefix + " "):
-        access_token = authorization[len(auth_prefix) + 1:].strip()
-    else:
-        raise HTTPException(status_code=401, detail="Invalid Authorization header")
-    token_entry = db.query(Token).filter(Token.access_token == access_token, Token.is_active==True).first()
-    if not token_entry:
-        raise HTTPException(status_code=404, detail="Access token not found")
-
-    user_entry = db.query(User).filter(User.id == token_entry.user_id).first()
-    if not user_entry:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    return JSONResponse(content={"user": str(user_entry.id)}, status_code=200)
-
+@permission_required([IsAdminUser])
+async def get_user(request: Request):
+    user = request.state.user
+    if user:
+        return JSONResponse(content={"user": str(user.id)}, status_code=200)
+    raise JSONResponse(status_code=401, detail="Authorization header missing")
 
 
 @auth_router.get("/api/get/current/user/")

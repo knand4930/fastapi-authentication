@@ -12,6 +12,8 @@ from starlette.responses import HTMLResponse
 import settings
 from ModelResource import setup_admin
 from database import engine
+from middleware.XFrameOptionsMiddleware import XFrameOptionsMiddleware
+from middleware.permission import PermissionMiddleware
 from middleware.unified_auth_middleware import UnifiedAuthMiddleware
 from queryset.auth.user_route import auth_router
 from queryset.department.department_route import department_router
@@ -20,6 +22,12 @@ from queryset.department.department_route import department_router
 from settings import origins
 
 app = FastAPI()
+
+app.add_middleware(UnifiedAuthMiddleware)
+app.add_middleware(SessionMiddleware, secret_key=settings.AES_SECRET_KEY)
+app.add_middleware(PermissionMiddleware)
+
+
 # Create the media directory if it doesn't exist
 os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
 
@@ -27,10 +35,11 @@ os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
 app.mount(settings.MEDIA_URL, StaticFiles(directory=settings.MEDIA_ROOT), name=settings.MEDIA_ROOT)
 
 
-# app.add_middleware(AuthMiddleware)
-app.add_middleware(UnifiedAuthMiddleware)
-app.add_middleware(SessionMiddleware, secret_key=settings.AES_SECRET_KEY)
+# app.add_middleware(XFrameOptionsMiddleware, options="SAMEORIGIN")
 
+
+# app.add_middleware(AuthMiddleware)
+# app.add_middleware(UnifiedAuthMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,

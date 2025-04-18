@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request
@@ -6,7 +7,7 @@ from fastapi.params import Depends
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from starlette.exceptions import HTTPException
 
 from typing import List, Optional
@@ -30,6 +31,25 @@ class ParentDepartmentGET(BaseModel):
     model_config = {
         "arbitrary_types_allowed": True
     }
+
+
+class GetDepartmentDetails(BaseModel):
+    id: UUID
+    user_id: UUID
+    department_name: str
+    description: Optional[str]
+    budget: Optional[int]
+    company_logo: Optional[str]
+    parent_department_id: UUID
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    get_user: Optional[str]
+    get_department: Optional[str]
+
+    class Config:  # Changed from lowercase 'config' to uppercase 'Config'
+        from_attributes = True  # Changed from from_orm = True
 
 
 def get_db():
@@ -139,3 +159,85 @@ async def update_department(
             "logo_url": department.company_logo
         }
     }
+
+
+
+@department_router.get("/api/admin/department/retrieve/{id}", response_model=GetDepartmentDetails)
+def get_department(id: UUID, db: Session = Depends(get_db)):
+    department = db.query(Department).get(id)
+    if not department:
+        raise HTTPException(status_code=404, detail="Department not found")
+
+    data = GetDepartmentDetails.from_orm(department)
+    data.get_user = department.get_user
+    data.get_department = department.get_department
+    return data
+
+
+@department_router.get("/api/admin/department/get/", response_model=List[GetDepartmentDetails])
+def get_all_departments(
+    department_id: UUID = None,
+    user_id: UUID = None,
+    department_name: str = None,
+    parent_department_id: UUID = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(Department)
+
+    if department_id:
+        query = query.filter(Department.id == department_id)
+    if user_id:
+        query = query.filter(Department.user_id == user_id)
+    if department_name:
+        query = query.filter(Department.department_name.ilike(f"%{department_name}%"))
+    if parent_department_id:
+        query = query.filter(Department.parent_department_id == parent_department_id)
+
+    departments = query.all()
+
+    if not departments:
+        raise HTTPException(status_code=404, detail="No departments found")
+
+    result = []
+    for department in departments:
+        data = GetDepartmentDetails.model_validate(department, from_attributes=True)
+        data.get_user = department.user  # If needed
+        data.get_department = department.parent_department  # If needed
+        result.append(data)
+
+    return result
+
+
+
+
+@department_router.get("/api/admin/department/search/data/", response_model=List[GetDepartmentDetails])
+def get_all_departments(
+    search: str = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(Department).options(joinedload(Department.parent_department))
+
+    if search:
+        search_pattern = f"%{search}%"
+        query = query.filter(
+            or_(
+                Department.department_name.ilike(search_pattern),
+                Department.parent_department.has(
+                    ParentDepartment.name.ilike(search_pattern)
+                )
+            )
+        )
+
+    departments = query.all()
+
+    if not departments:
+        raise HTTPException(status_code=404, detail="No departments found")
+
+    result = []
+    for department in departments:
+        data = GetDepartmentDetails.model_validate(department, from_attributes=True)
+        data.get_user = department.user
+        data.get_department = department.parent_department
+        result.append(data)
+
+    return result

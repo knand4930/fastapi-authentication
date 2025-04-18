@@ -1,3 +1,4 @@
+import datetime
 import functools
 import uuid
 from enum import Enum
@@ -6,7 +7,8 @@ from typing import List, Optional, Callable, Set, Any, Dict, Union
 from fastapi import Request, HTTPException, Depends
 from sqlalchemy.orm import Session
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import RedirectResponse
+from starlette.responses import RedirectResponse, JSONResponse
+from fastapi.params import Header
 
 from database import get_db
 from models.auth.user import User, Permission
@@ -24,8 +26,8 @@ class AccessLevel(str, Enum):
 
 class AuthRegistry:
     """Registry to maintain exempt paths for authentication middleware"""
-    _exempt_paths: Set[str] = {"/admin/login", "/static", "/favicon.ico", "/admin/static", "/api/auth/register/",
-                               "/api/auth/login/", "/api/auth/access/token/", "/api/auth/me/"}
+    _exempt_paths: Set[str] = {"/admin/login","/docs#/default/read_item_items__item_id__get/", "/static", "/favicon.ico", "/admin/static", "/api/auth/register/",
+                               "/api/auth/login/", "/api/auth/access/token/"}
 
     @classmethod
     def register_exempt_path(cls, path: str) -> None:
@@ -70,11 +72,13 @@ def requires_permission(
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
             # Extract request object from args or kwargs
-            request = None
-            for arg in args:
-                if isinstance(arg, Request):
-                    request = arg
-                    break
+            # request = None
+            # for arg in args:
+            #     if isinstance(arg, Request):
+            #         request = arg
+            #         break
+
+            request = next((arg for arg in args if isinstance(arg, Request)), None)
 
             if not request:
                 for arg_name, arg_val in kwargs.items():
@@ -186,245 +190,181 @@ class UnifiedAuthMiddleware(BaseHTTPMiddleware):
         request.state.user = None
 
         # Check if path is exempt from authentication
-        current_path = request.url.path
-        normalized_path = current_path.rstrip('/')
-
-        # Check if path is explicitly exempt
-        is_exempt = False
-        for exempt_path in AuthRegistry.get_exempt_paths():
-            normalized_exempt = exempt_path.rstrip('/')
-            if normalized_path == normalized_exempt or current_path.startswith(exempt_path):
-                is_exempt = True
-                break
-
-        # If path is exempt, skip authentication
-        if is_exempt:
+        if self._is_path_exempt(request.url.path):
             return await call_next(request)
 
         # Handle admin routes
-        if current_path.startswith("/admin"):
+
+        session_user = await self._get_user_from_session(request)
+        if session_user:
+            request.state.user = session_user
+            return await call_next(request)
+
+
+        if request.url.path.startswith("/admin"):
             return await self._handle_admin_auth(request, call_next)
 
-        # Handle API routes
+        # Handle API routes with token authentication
         return await self._handle_api_auth(request, call_next)
+
+    def _is_path_exempt(self, path: str) -> bool:
+        """Check if the current path is exempt from authentication"""
+
+        for exempt_path in AuthRegistry.get_exempt_paths():
+            if path == exempt_path or path.startswith(exempt_path):
+                return True
+        return False
+
+    async def _get_user_from_session(self, request: Request) -> Optional[User]:
+        """Try to get user from session for both admin and API routes"""
+        user_id = request.session.get("user_id") or request.session.get("admin_user_id")
+        if not user_id:
+            return None
+
+        db: Session = next(get_db())
+        try:
+            user = db.query(User).filter(
+                User.id == uuid.UUID(user_id),
+                User.is_active == True
+            ).first()
+            return user
+        except Exception:
+            return None
+        finally:
+            db.close()
+
 
     async def _handle_admin_auth(self, request: Request, call_next):
         """Handle session-based authentication for admin routes"""
-        # Get session data
-        admin_token = request.session.get("admin_token")
+        # Check for user ID in session
         admin_user_id = request.session.get("admin_user_id")
-
-        if not admin_token or not admin_user_id:
-            # Redirect to admin login
+        if not admin_user_id:
+            # Redirect to login if not authenticated
             return RedirectResponse(url="/admin/login", status_code=302)
 
-        # Verify admin user
+        # Validate user exists and is active
         db: Session = next(get_db())
-        user = db.query(User).filter(
-            User.id == uuid.UUID(admin_user_id),
-            User.is_active == True
-        ).first()
-
-        if not user or not user.is_superuser:
-            # Clear invalid session and redirect
-            request.session.clear()
-            return RedirectResponse(url="/admin/login", status_code=302)
-
-        # Set user in request state and continue
-        request.state.user = user
-        return await call_next(request)
-
-    async def _handle_api_auth(self, request: Request, call_next):
-        """Handle token-based authentication for API routes"""
-        from starlette.responses import JSONResponse
-
-        # Check if there's already a session (might be coming from admin session)
-        admin_user_id = request.session.get("admin_user_id")
-        if admin_user_id:
-            db: Session = next(get_db())
+        try:
             user = db.query(User).filter(
                 User.id == uuid.UUID(admin_user_id),
                 User.is_active == True
             ).first()
 
-            if user:
-                # Session user found, no need for additional auth
-                request.state.user = user
-                return await call_next(request)
+            if not user:
+                # Clear invalid session and redirect to login
+                request.session.pop("admin_user_id", None)
+                return RedirectResponse(url="/admin/login", status_code=302)
 
+            # Set user in request state
+            request.state.user = user
+
+            # Continue with request
+            return await call_next(request)
+        except Exception as e:
+            # Handle any unexpected errors
+            return RedirectResponse(url="/admin/login", status_code=302)
+        finally:
+            db.close()
+
+    async def _handle_api_auth(self, request: Request, call_next):
+        """Handle token-based authentication for API routes"""
+        # Check if there's already a session from admin routes
+        if hasattr(request.state, "user") and request.state.user is not None:
+            return await call_next(request)
+
+        # Extract and validate token
+        user = await self._validate_api_token(request)
+        if isinstance(user, JSONResponse):
+            # Return error response if validation failed
+            return user
+
+        # Set user in request state if validation succeeded
+        if user:
+            request.state.user = user
+
+        # Continue with request
+        return await call_next(request)
+
+    async def _validate_api_token(self, request: Request) -> Optional[User]:
+        """Validate API token and return user or error response"""
         # Extract token from Authorization header
         auth_header = request.headers.get("Authorization")
         if not auth_header:
-            # Return 401 for unauthenticated requests
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Authentication required"}
             )
 
         # Validate token format
-        if not auth_header.startswith(TOKEN_EXPIRE["AUTH_HEADER_TYPES"][0] + " "):
+        auth_prefix = TOKEN_EXPIRE["AUTH_HEADER_TYPES"][0]
+        if not auth_header.startswith(auth_prefix + " "):
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Invalid authentication format"}
             )
 
         # Extract token
-        access_token = auth_header[len(TOKEN_EXPIRE["AUTH_HEADER_TYPES"][0]) + 1:].strip()
+        access_token = auth_header[len(auth_prefix) + 1:].strip()
 
-        # Verify token
+        # Get database session
         db: Session = next(get_db())
-        token_entry = db.query(Token).filter(
-            Token.access_token == access_token,
-            Token.is_active == True
-        ).first()
+        try:
+            # Get token and verify it exists
+            token_entry = db.query(Token).filter(
+                Token.access_token == access_token
+            ).first()
 
-        if not token_entry:
+            if not token_entry:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Invalid or non-existent token"}
+                )
+
+            # Check token expiration
+            now = datetime.datetime.utcnow()
+            if now > token_entry.access_expires_at:
+                # Access token expired
+                if token_entry.is_active:
+                    token_entry.is_active = False
+                    db.commit()
+
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Access token has expired"}
+                )
+
+            # Check if token is inactive
+            if not token_entry.is_active:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Token is inactive"}
+                )
+
+            # Get user from token
+            user = db.query(User).filter(
+                User.id == token_entry.user_id,
+                User.is_active == True
+            ).first()
+
+            if not user:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "User not found or inactive"}
+                )
+
+            # Return valid user
+            return user
+
+        except Exception as e:
+            # Handle any unexpected errors
             return JSONResponse(
-                status_code=401,
-                content={"detail": "Invalid or expired token"}
+                status_code=500,
+                content={"detail": "Authentication error"}
             )
+        finally:
+            db.close()
 
-        # Get user from token
-        user = db.query(User).filter(
-            User.id == token_entry.user_id,
-            User.is_active == True
-        ).first()
 
-        if not user:
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "User not found"}
-            )
-
-        # Set user in request state and continue
-        request.state.user = user
-        return await call_next(request)
-
-#
-# class UnifiedAuthMiddleware(BaseHTTPMiddleware):
-#     """
-#     Unified authentication middleware that handles both API and admin authentication
-#     """
-#
-#     async def dispatch(self, request: Request, call_next):
-#         # Initialize user as None in request state
-#         request.state.user = None
-#
-#         # Check if path is exempt from authentication
-#         current_path = request.url.path
-#
-#         # Normalize path for comparison (handle both with and without trailing slash)
-#         normalized_path = current_path.rstrip('/')
-#
-#         for exempt_path in AuthRegistry.get_exempt_paths():
-#             normalized_exempt = exempt_path.rstrip('/')
-#             if normalized_path == normalized_exempt or current_path.startswith(exempt_path):
-#                 return await call_next(request)
-#
-#         # Check if there's already a valid session
-#         admin_token = request.session.get("admin_token")
-#         admin_user_id = request.session.get("admin_user_id")
-#
-#         # If session exists, validate and proceed
-#         if admin_token and admin_user_id:
-#             db: Session = next(get_db())
-#             user = db.query(User).filter(
-#                 User.id == uuid.UUID(admin_user_id),
-#                 User.is_active == True
-#             ).first()
-#
-#             if user:
-#                 # Set user in request state and continue
-#                 request.state.user = user
-#                 return await call_next(request)
-#
-#         # Handle admin routes with session-based authentication
-#         if current_path.startswith("/admin"):
-#             return await self._handle_admin_auth(request, call_next)
-#
-#         # Handle API routes with token-based authentication
-#         return await self._handle_api_auth(request, call_next)
-#
-#     async def _handle_admin_auth(self, request: Request, call_next):
-#         """Handle session-based authentication for admin routes"""
-#         # Get session data
-#         admin_token = request.session.get("admin_token")
-#         admin_user_id = request.session.get("admin_user_id")
-#
-#         if not admin_token or not admin_user_id:
-#             # Redirect to admin login
-#             return RedirectResponse(url="/admin/login", status_code=302)
-#
-#         # Verify admin user
-#         db: Session = next(get_db())
-#         user = db.query(User).filter(
-#             User.id == uuid.UUID(admin_user_id),
-#             User.is_active == True
-#         ).first()
-#
-#         if not user or not user.is_superuser:
-#             # Clear invalid session and redirect
-#             request.session.clear()
-#             return RedirectResponse(url="/admin/login", status_code=302)
-#
-#         # Set user in request state and continue
-#         request.state.user = user
-#         return await call_next(request)
-#
-#     async def _handle_api_auth(self, request: Request, call_next):
-#         """Handle token-based authentication for API routes"""
-#         # Check if there's already a session (might be coming from admin session)
-#         admin_user_id = request.session.get("admin_user_id")
-#         if admin_user_id:
-#             db: Session = next(get_db())
-#             user = db.query(User).filter(
-#                 User.id == uuid.UUID(admin_user_id),
-#                 User.is_active == True
-#             ).first()
-#
-#             if user:
-#                 # Session user found, no need for additional auth
-#                 request.state.user = user
-#                 return await call_next(request)
-#
-#         # Proceed with token-based auth if no session
-#         db: Session = next(get_db())
-#
-#         # Extract token from Authorization header
-#         auth_header = request.headers.get("Authorization")
-#         if not auth_header:
-#             # Allow the request to continue without authentication
-#             # But make sure user is already set to None in request.state
-#             return await call_next(request)
-#
-#         if not auth_header.startswith(TOKEN_EXPIRE["AUTH_HEADER_TYPES"][0] + " "):
-#             raise HTTPException(status_code=401, detail="Invalid authentication format")
-#
-#         # Extract token
-#         access_token = auth_header[len(TOKEN_EXPIRE["AUTH_HEADER_TYPES"][0]) + 1:].strip()
-#
-#         # Verify token
-#         token_entry = db.query(Token).filter(
-#             Token.access_token == access_token,
-#             Token.is_active == True
-#         ).first()
-#
-#         if not token_entry:
-#             raise HTTPException(status_code=401, detail="Invalid or expired token")
-#
-#         # Get user from token
-#         user = db.query(User).filter(
-#             User.id == token_entry.user_id,
-#             User.is_active == True
-#         ).first()
-#
-#         if not user:
-#             raise HTTPException(status_code=401, detail="User not found")
-#
-#         # Set user in request state and continue
-#         request.state.user = user
-#         return await call_next(request)
-#
 
 class PermissionManager:
     """Utility class for permission management"""

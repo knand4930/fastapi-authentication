@@ -4,7 +4,8 @@ from sqladmin.authentication import AuthenticationBackend
 from sqlalchemy.orm import Session
 
 import settings
-from ModelResource.auth.ModelResource import DepartmentAdmin, ParentDepartmentAdmin, CountryAdmin, StateAdmin, CityAdmin
+from ModelResource.auth.ModelResource import DepartmentAdmin, ParentDepartmentAdmin, CountryAdmin, StateAdmin, \
+    CityAdmin, TeamManagementAdmin
 from database import get_db
 from models.auth.user import User
 import uuid
@@ -79,6 +80,7 @@ def setup_admin(app, engine):
 
     admin.add_view(UserAdmin)
     admin.add_view(PermissionAdmin)
+    admin.add_view(TeamManagementAdmin)
     admin.add_view(TokenAdmin)
     admin.add_view(SessionAdmin)
     admin.add_view(BlackListTokenAdmin)

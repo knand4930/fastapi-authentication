@@ -24,6 +24,8 @@ class Token(Base):
 
     user = relationship("User", back_populates="tokens")
 
+
+
     def __init__(self, user_id):
         raw_access_token = uuid.uuid4().hex + uuid.uuid4().hex
         raw_refresh_token = uuid.uuid4().hex + uuid.uuid4().hex
@@ -38,3 +40,66 @@ class Token(Base):
     def __str__(self):
         return f"Token {self.id} for User {self.user_id}"
 
+    @property
+    def is_expired(self) -> bool:
+        """Check if token is expired (either access or refresh)"""
+        now = datetime.datetime.utcnow()
+        expired = now > self.access_expires_at or now > self.refresh_expires_at
+
+        # Automatically set is_active to False if token is expired
+        if expired and self.is_active:
+            self.is_active = False
+
+        return expired
+
+    @property
+    def is_access_expired(self) -> bool:
+        """Check if access token is expired"""
+        expired = datetime.datetime.utcnow() > self.access_expires_at
+
+        # Automatically set is_active to False if access token is expired
+        if expired and self.is_active:
+            self.is_active = False
+
+        return expired
+
+    @property
+    def is_refresh_expired(self) -> bool:
+        """Check if refresh token is expired"""
+        expired = datetime.datetime.utcnow() > self.refresh_expires_at
+
+        # Automatically set is_active to False if refresh token is expired
+        if expired and self.is_active:
+            self.is_active = False
+
+        return expired
+
+    def validate(self) -> bool:
+        """Validate token status"""
+        if not self.is_active:
+            return False
+
+        # The is_expired property now handles deactivation automatically
+        if self.is_expired:
+            return False
+
+        return True
+
+    def deactivate(self) -> None:
+        """Mark token as inactive"""
+        self.is_active = False
+
+    def refresh(self) -> None:
+        """Generate new tokens and reset expiration times"""
+        if self.is_refresh_expired:
+            raise ValueError("Cannot refresh an expired token")
+
+        raw_access_token = uuid.uuid4().hex + uuid.uuid4().hex
+        self.access_token = encrypt_token(raw_access_token)
+
+        now = datetime.datetime.utcnow()
+        self.access_expires_at = now + TOKEN_EXPIRE["ACCESS_TOKEN_LIFETIME"]
+
+        # Optionally extend refresh token lifetime too
+        if (self.refresh_expires_at - now) < TOKEN_EXPIRE["REFRESH_TOKEN_RENEWAL_THRESHOLD"]:
+            self.refresh_expires_at = now + TOKEN_EXPIRE["REFRESH_TOKEN_LIFETIME"]
